@@ -213,6 +213,7 @@ export class BasicGameServer {
    *
    */
   async _fireTimers(context: BaseContext) {
+    console.log("Firing timers");
     this.context = context as any;
     const now = Date.now();
 
@@ -235,6 +236,7 @@ export class BasicGameServer {
       }
 
       this.context.postId = timer.post_id;
+      console.log("Firing timer", timer);
       await this.onTimerEvent(timer);
     }
   }
@@ -337,6 +339,7 @@ export class BasicGameServer {
         acceptLabel: "Post",
       },
       async ({ values }, context) => {
+        that.context = context;
         try {
           if (!context.userId)
             return context.ui.showToast(
@@ -355,6 +358,7 @@ export class BasicGameServer {
               />
             ),
           });
+          that.context.postId = post.id;
           if ((await context.scheduler.listJobs()).length === 0) {
             await context.scheduler.runJob({
               cron: "* * * * *",
