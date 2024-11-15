@@ -1,79 +1,123 @@
-// import "./capabilities/actions/index.js";
-
-import { RedditObject } from "@devvit/protos";
 import {
   BaseContext,
   ContextAPIClients,
   Devvit,
   JSONObject,
   JSONValue,
-  Post,
   RedditAPIClient,
   RedisClient,
   useChannel,
   UseChannelResult,
-  User,
   useState,
 } from "@devvit/public-api";
-import { RealtimeClient } from "@devvit/public-api/apis/realtime/RealtimeClient.js";
-import { _activeRenderContext } from "@devvit/public-api/devvit/internals/blocks/handler/BlocksHandler.js";
 
+/**
+ * This is a simplified version of a Reddit Post.  You'll probably want to use the Reddit API Client to grab a more
+ * complete one.
+ */
 export type PostInfo = {
   post_id: string;
 };
 
+/**
+ * This is a simplified version of a Reddit User.  You'll probably want to use the Reddit API Client to grab a more
+ * complete one.
+ */
 export type UserInfo = {
   user_id: string;
 };
 
-export type Message = {
+export type BroadcastMessage = {
   from: UserInfo;
-  channel: string;
-  data: any;
-};
 
-export type Callbacks = {
-  onPostCreated?: (post: Post) => Promise<void>;
+  /** Typically this is the post_id, but you can create your own channels. */
+  channel: string;
+
+  /** The raw data of the message. */
+  data: any;
 };
 
 export type Timer = {
   at: (elapsed: number, callback: Function) => Promise<void>;
 };
 
-export class DefaultGameServer {
+/**
+ * This is a basic game server that can be used to create a simple game.  Many of the methods are overridable so you can
+ * customize the behavior of the game server.  Look at the specific method documentation for more information.
+ */
+export class BasicGameServer {
+  /**
+   * @param name The name of the game.  This is used to create the menu item to create a post.
+   */
   constructor(private name: string) {}
 
+  /**
+   * This method is called when a new post is created.  You can use this to initialize the game state.
+   *
+   * @param post The post that was created.
+   */
   async onPostCreated(post: PostInfo): Promise<any> {}
 
+  /**
+   * By default, this method will broadcast the message to the post_id channel.  You can override this method to
+   * customize the behavior.
+   *
+   * @param msg The message that was sent from the webview.
+   */
   async onWebviewMessage(msg: JSONValue): Promise<any> {
     if (this.context.postId) {
       await this.broadcast(this.context.postId, msg);
     }
   }
-  async onReceiveBroadcasted(msg: Message): Promise<any> {
+
+  /**
+   * This method is called when a message is received from the broadcast channel.  By default, this will send the
+   * message to the webview.  You can override this method to customize the behavior.
+   *
+   * @param msg The message that was received from the broadcast channel.
+   */
+  async onReceive(msg: BroadcastMessage): Promise<any> {
     await this.context.ui.webView.postMessage("webview1", msg);
   }
-  async onPlayerJoined(
-    post: PostInfo,
-    user: UserInfo | undefined
-  ): Promise<any> {
-    this.broadcast(post.post_id, {
-      joined: user ?? null,
-    });
-    await this.subscribePlayer(post.post_id);
+
+  /**
+   * A player has joined the game.  By default, this will
+   *
+   * 1. broadcast a notification to the post_id channel, and
+   * 2. subscribe the player to the post_id channel.
+   */
+  async onPlayerJoined(): Promise<any> {
+    await this.subscribePlayer(this.context.postId!);
+    await this.broadcast(this.context.postId!, "Player joined");
   }
+  /**
+   * You can use this method to broadcast a message to all of your players.
+   *
+   * @param channel
+   * @param msg
+   */
   async broadcast(channel: string, msg: JSONValue): Promise<any> {
     const rsp = await this.context.realtime.send(channel, {
       from: { user_id: this.context.userId ?? "logged_out" },
       msg,
     });
   }
+
+  /**
+   * This subscribes the current player to a channel.
+   *
+   * @param channel
+   */
   async subscribePlayer(channel: string): Promise<any> {
     const subsSet = new Set(this.subscriptions);
     subsSet.add(channel);
     this.setSubscriptions(Array.from(subsSet));
   }
 
+  /**
+   * This unsubscribes the current player from a channel.
+   * @param channel
+   */
   async unsubscribePlayer(channel: string): Promise<any> {
     const subsSet = new Set(this.subscriptions);
     subsSet.delete(channel);
@@ -84,21 +128,42 @@ export class DefaultGameServer {
     throw new Error("Not implemented");
   }
 
+  /**
+   * This is a helper method to get the Redis client.  All of your game state should be stored in Redis.
+   */
   get redis(): RedisClient {
     return this.context.redis;
   }
 
+  /**
+   * This is a helper method to get the Reddit API client.  You can use this to interact with Reddit.
+   */
   get reddit(): RedditAPIClient {
     return this.context.reddit;
   }
 
+  /**
+   * @internal
+   */
   subscriptions: string[] = [];
+
+  /**
+   * @internal
+   */
   setSubscriptions: (subs: string[]) => void = () => {
     throw new Error("setSubscriptions not set");
   };
 
+  /**
+   * @internal
+   */
   context: BaseContext & ContextAPIClients = null as any;
 
+  /**
+   * This must be called to build the game server.  This will add the game server to the Devvit instance.
+   *
+   * @returns The Devvit instance with the game server added.
+   */
   build(): typeof Devvit {
     const that = this;
     Devvit.configure({
@@ -151,7 +216,6 @@ export class DefaultGameServer {
 
     const App: Devvit.CustomPostComponent = (context) => {
       that.context = context;
-      console.log("state", _activeRenderContext?.request.state);
 
       const [subscriptions, setSubscriptions] = useState<string[]>([]);
       that.subscriptions = subscriptions;
@@ -161,7 +225,7 @@ export class DefaultGameServer {
       const [userInfo] = useState<JSONObject>(async () => {
         const user = await context.reddit.getCurrentUser();
         const ui = user ? { user_id: user.id } : { user_id: "logged_out" };
-        await that.onPlayerJoined(postInfo, ui);
+        await that.onPlayerJoined();
         return ui;
       });
 
@@ -171,7 +235,7 @@ export class DefaultGameServer {
         channels[sub] = useChannel({
           name: sub,
           onMessage: (msg) => {
-            that.onReceiveBroadcasted({
+            that.onReceive({
               channel: sub,
               from: (msg as any).from,
               data: (msg as any).msg,

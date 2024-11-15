@@ -7,12 +7,12 @@ Hub is a server for making games in Devvit with less boilerplate and server inte
 - Post creation boilerplate
 
 Add the devvit-hub npm to your project, and then replace your main.ts with the code snippet below. Then you basically build your
-entire app inside the webview!
+entire app inside the webview, where window.postMessage will automatically be wired up!
 
 ```tsx
-import { DefaultGameServer } from "devvit-hub";
+import { BasicGameServer } from "devvit-hub";
 
-const server = new DefaultGameServer("My Game");
+const server = new BasicGameServer("My Game");
 
 // You can optionally subclass and override methods on GameServer for custom server functionality.  Look at the docs for more info.
 server.onPostCreated = async ({ post_id }) => {
@@ -30,3 +30,5 @@ server.onPostCreated = async ({ post_id }) => {
 
 export default server.build();
 ```
+
+Check out https://fizx.github.io/devvit-hub for documentation.
