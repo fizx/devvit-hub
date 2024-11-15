@@ -1,6 +1,6 @@
 {
   "name": "devvit-hub",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Your library description here",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -29,6 +29,7 @@
     "vitest": "1.6.0"
   },
   "dependencies": {
-    "devvit": "^0.11.3-next-2024-11-14-a077c3bb7.0"
+    "devvit": "^0.11.3-next-2024-11-14-a077c3bb7.0",
+    "uuid": "^11.0.3"
   }
 }
