@@ -15,9 +15,9 @@ import { BasicGameServer } from "devvit-hub";
 const server = new BasicGameServer("My Game");
 
 // You can optionally subclass and override methods on GameServer for custom server functionality.  Look at the docs for more info.
-server.onPostCreated = async ({ post_id }) => {
+server.onPostCreated = async ({ postId }) => {
   await server.reddit.submitComment({
-    id: post_id,
+    id: postId,
     text:
       `Welcome to My Game!\n\n` +
       `Here's some instructions on how to play...\n` +

@@ -16,7 +16,7 @@ import {
  * complete one.
  */
 export type PostInfo = {
-  post_id: string;
+  postId: string;
 };
 
 /**
@@ -24,15 +24,15 @@ export type PostInfo = {
  * complete one.
  */
 export type UserInfo = {
-  user_id: string;
+  userId: string;
   username: string;
 
   /** This is a unique id for the specific app on the other end.  If they refresh, it would be a different one. */
-  screen_id: string;
+  screenId: string;
 };
 
 export type TimerEvent = {
-  post_id: string;
+  postId: string;
   name: string;
   id: string;
   interval?: number;
@@ -41,7 +41,7 @@ export type TimerEvent = {
 export type BroadcastMessage = {
   from: UserInfo;
 
-  /** Typically this is the post_id, but you can create your own channels. */
+  /** Typically this is the postId, but you can create your own channels. */
   channel: string;
 
   /** The raw data of the message. */
@@ -67,7 +67,7 @@ export class BasicGameServer {
 
   /**
    * This method is called when a message is received from the webview.  You can use this to update the game state. By default,
-   * this method will broadcast the message to the post_id channel.  You can override this method to customize the behavior.
+   * this method will broadcast the message to the postId channel.  You can override this method to customize the behavior.
    *
    * @param msg The message that was sent from the webview.
    */
@@ -90,8 +90,8 @@ export class BasicGameServer {
   /**
    * A player has joined the game.  By default, this will
    *
-   * 1. broadcast a notification to the post_id channel, and
-   * 2. subscribe the player to the post_id channel.
+   * 1. broadcast a notification to the postId channel, and
+   * 2. subscribe the player to the postId channel.
    */
   async onPlayerJoined(): Promise<any> {
     await this.subscribePlayer(this.context.postId!);
@@ -106,7 +106,7 @@ export class BasicGameServer {
    */
   async broadcast(channel: string, msg: JSONValue): Promise<any> {
     const rsp = await this.context.realtime.send(channel, {
-      from: { user_id: this.context.userId ?? "logged_out" },
+      from: this.userInfo,
       msg,
     });
   }
@@ -139,10 +139,10 @@ export class BasicGameServer {
 
   /**
    * This gets called whenever a timer event is triggered.  You can use this to update the game state, broadcast
-   * changes, etc.  By default, this method broadcasts the timer event to the post_id channel.
+   * changes, etc.  By default, this method broadcasts the timer event to the postId channel.
    */
   async onTimerEvent(t: TimerEvent) {
-    await this.broadcast(t.post_id, {
+    await this.broadcast(t.postId, {
       timer: {
         timer: t,
       },
@@ -174,14 +174,14 @@ export class BasicGameServer {
    * @param name - Unique identifier for the timer, used for cancellation
    * @param millis - Delay in milliseconds before the timer fires
    * @returns A TimerEvent object representing the scheduled timer
-   * @throws Error if no post_id is present in the context
+   * @throws Error if no postId is present in the context
    */
   async setTimeout(name: string, millis: number): Promise<TimerEvent> {
     if (!this.context.postId) {
-      throw new Error("No post_id in context");
+      throw new Error("No postId in context");
     }
     const event = {
-      post_id: this.context.postId,
+      postId: this.context.postId,
       name,
       id: v4(),
     };
@@ -200,14 +200,14 @@ export class BasicGameServer {
    * @param name - Unique identifier for the timer, used for cancellation
    * @param millis - Interval in milliseconds between timer events
    * @returns A TimerEvent object representing the scheduled timer
-   * @throws Error if no post_id is present in the context
+   * @throws Error if no postId is present in the context
    */
   async setInterval(name: string, millis: number): Promise<TimerEvent> {
     if (!this.context.postId) {
-      throw new Error("No post_id in context");
+      throw new Error("No postId in context");
     }
     const event = {
-      post_id: this.context.postId,
+      postId: this.context.postId,
       name,
       id: v4(),
       interval: millis,
@@ -228,7 +228,7 @@ export class BasicGameServer {
    *
    */
   async _fireTimers(context: BaseContext) {
-    console.log("Firing timers");
+    console.log("Firing timers at " + new Date().toISOString());
     this.context = context as any;
     const now = Date.now();
 
@@ -246,7 +246,7 @@ export class BasicGameServer {
           const timer = JSON.parse(entry.member) as TimerEvent;
 
           // Process the timer first
-          this.context.postId = timer.post_id;
+          this.context.postId = timer.postId;
           console.log("Firing timer", timer);
           await this.onTimerEvent(timer);
 
@@ -293,9 +293,7 @@ export class BasicGameServer {
    * this is a TimerEvent handler.
    */
   get userId(): string | null {
-    return this.userInfo.user_id === "logged_out"
-      ? null
-      : this.userInfo.user_id;
+    return this.userInfo.userId === "logged_out" ? null : this.userInfo.userId;
   }
 
   /**
@@ -333,9 +331,9 @@ export class BasicGameServer {
    * @internal
    */
   _userInfo: UserInfo = {
-    user_id: "logged_out",
+    userId: "logged_out",
     username: "Anonymous",
-    screen_id: "",
+    screenId: "",
   };
 
   /**
@@ -354,6 +352,7 @@ export class BasicGameServer {
     Devvit.addSchedulerJob({
       name: "timers",
       onRun: async (event, context) => {
+        console.log("Firing timers at " + new Date().toISOString());
         await that._fireTimers(context);
       },
     });
@@ -401,7 +400,7 @@ export class BasicGameServer {
             name: "timers",
             data: {},
           });
-          await this.onPostCreated({ post_id: post.id });
+          await this.onPostCreated({ postId: post.id });
           context.ui.navigateTo(
             `https://www.reddit.com/r/${sr.name}/comments/${post.id}`
           );
@@ -419,21 +418,21 @@ export class BasicGameServer {
       const [subscriptions, setSubscriptions] = useState<string[]>([]);
       that.subscriptions = subscriptions;
       that.setSubscriptions = setSubscriptions;
-      const postInfo = { post_id: context.postId! };
+      const postInfo = { postId: context.postId! };
 
       const [ui] = useState<UserInfo>(async () => {
         console.log("Getting user info");
         const user = await context.reddit.getCurrentUser();
         that._userInfo = user
           ? {
-              user_id: user.id,
+              userId: user.id,
               username: user.username,
-              screen_id: v4(),
+              screenId: v4(),
             }
           : {
-              user_id: "logged_out",
+              userId: "logged_out",
               username: "Anonymous",
-              screen_id: v4(),
+              screenId: v4(),
             };
         await that.onPlayerJoined();
         return that.userInfo;
