@@ -3,7 +3,6 @@ import {
   BaseContext,
   ContextAPIClients,
   Devvit,
-  JSONObject,
   JSONValue,
   RedditAPIClient,
   RedisClient,
@@ -67,8 +66,8 @@ export class BasicGameServer {
   async onPostCreated(post: PostInfo): Promise<any> {}
 
   /**
-   * By default, this method will broadcast the message to the post_id channel.  You can override this method to
-   * customize the behavior.
+   * This method is called when a message is received from the webview.  You can use this to update the game state. By default,
+   * this method will broadcast the message to the post_id channel.  You can override this method to customize the behavior.
    *
    * @param msg The message that was sent from the webview.
    */
@@ -85,7 +84,7 @@ export class BasicGameServer {
    * @param msg The message that was received from the broadcast channel.
    */
   async onReceive(msg: BroadcastMessage): Promise<any> {
-    await this.context.ui.webView.postMessage("webview1", msg);
+    this.sendToCurentPlayerWebview(msg);
   }
 
   /**
@@ -96,7 +95,8 @@ export class BasicGameServer {
    */
   async onPlayerJoined(): Promise<any> {
     await this.subscribePlayer(this.context.postId!);
-    await this.broadcast(this.context.postId!, { joined: true });
+    await this.broadcast(this.context.postId!, { joined: this.userInfo });
+    await this.sendToCurentPlayerWebview({ ready: this.userInfo });
   }
   /**
    * You can use this method to broadcast a message to all of your players.
@@ -109,6 +109,21 @@ export class BasicGameServer {
       from: { user_id: this.context.userId ?? "logged_out" },
       msg,
     });
+  }
+
+  /**
+   * Assuming you're in an individual user's context, you can use this method to send a message to the webview.  If you're in
+   * a more global context, like a timer event, there won't be a webview to send a message to, so this will do nothing.
+   *
+   * @param msg The message to send to the webview.  This should be a JSONable object.
+   * @returns
+   */
+  async sendToCurentPlayerWebview(msg: JSONValue): Promise<any> {
+    if (!this.context.ui.webView) {
+      console.error("No webview to send message to");
+      return;
+    }
+    await this.context.ui.webView.postMessage("webview1", msg);
   }
 
   /**
@@ -217,27 +232,45 @@ export class BasicGameServer {
     this.context = context as any;
     const now = Date.now();
 
-    const expired = await this.context.redis.zRange("timeouts", 0, now, {
-      by: "score",
-    });
+    try {
+      // Get expired timers but don't remove them yet
+      const expired = await this.context.redis.zRange("timeouts", 0, now, {
+        by: "score",
+      });
 
-    if (expired.length === 0) return;
+      if (expired.length === 0) return;
 
-    await this.context.redis.zRemRangeByScore("timeouts", 0, now);
+      // Process each timer individually
+      for (const entry of expired) {
+        try {
+          const timer = JSON.parse(entry.member) as TimerEvent;
 
-    for (const entry of expired) {
-      const timer = JSON.parse(entry.member) as TimerEvent;
+          // Process the timer first
+          this.context.postId = timer.post_id;
+          console.log("Firing timer", timer);
+          await this.onTimerEvent(timer);
 
-      if (timer.interval) {
-        await this.context.redis.zAdd("timeouts", {
-          score: now + timer.interval,
-          member: entry.member,
-        });
+          // Only after successful processing:
+          // 1. Remove the original timer
+          // 2. Add the next interval if needed
+          await this.context.redis.zRem("timeouts", [entry.member]);
+
+          if (timer.interval) {
+            await this.context.redis.zAdd("timeouts", {
+              score: now + timer.interval,
+              member: entry.member,
+            });
+          }
+        } catch (error) {
+          console.error(
+            `Failed to process timer entry ${entry.member}:`,
+            error
+          );
+          // Skip this timer - it will be retried on next iteration
+        }
       }
-
-      this.context.postId = timer.post_id;
-      console.log("Firing timer", timer);
-      await this.onTimerEvent(timer);
+    } catch (error) {
+      console.error("Error in _fireTimers:", error);
     }
   }
 
@@ -359,13 +392,15 @@ export class BasicGameServer {
             ),
           });
           that.context.postId = post.id;
-          if ((await context.scheduler.listJobs()).length === 0) {
-            await context.scheduler.runJob({
-              cron: "* * * * *",
-              name: "timers",
-              data: {},
-            });
+          const jobs = await context.scheduler.listJobs();
+          for (const job of jobs) {
+            await context.scheduler.cancelJob(job.id);
           }
+          await context.scheduler.runJob({
+            cron: "* * * * *",
+            name: "timers",
+            data: {},
+          });
           await this.onPostCreated({ post_id: post.id });
           context.ui.navigateTo(
             `https://www.reddit.com/r/${sr.name}/comments/${post.id}`
@@ -387,8 +422,8 @@ export class BasicGameServer {
       const postInfo = { post_id: context.postId! };
 
       const [ui] = useState<UserInfo>(async () => {
+        console.log("Getting user info");
         const user = await context.reddit.getCurrentUser();
-        await that.onPlayerJoined();
         that._userInfo = user
           ? {
               user_id: user.id,
@@ -400,7 +435,7 @@ export class BasicGameServer {
               username: "Anonymous",
               screen_id: v4(),
             };
-        that.onPlayerJoined();
+        await that.onPlayerJoined();
         return that.userInfo;
       });
       that._userInfo = ui;
