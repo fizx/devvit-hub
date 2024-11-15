@@ -3,7 +3,6 @@
     "outDir": "./dist",
     "declaration": true,
     "declarationMap": true,
-    "emitDeclarationOnly": true,
     "declarationDir": "./dist",
     "module": "ESNext",
     "moduleResolution": "node",
