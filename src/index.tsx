@@ -143,9 +143,7 @@ export class BasicGameServer {
    */
   async onTimerEvent(t: TimerEvent) {
     await this.broadcast(t.postId, {
-      timer: {
-        timer: t,
-      },
+      timer: t,
     });
   }
 

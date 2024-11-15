@@ -33,4 +33,4 @@ export default server.build();
 
 Check out https://fizx.github.io/devvit-hub for documentation.
 
-There's a very simple example app at https://github.com/fizx/chatty
+There's a very simple example app at https://github.com/fizx/chatty.
