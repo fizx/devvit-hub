@@ -1,3 +1,4 @@
+import { v4 } from "uuid";
 import {
   BaseContext,
   ContextAPIClients,
@@ -25,6 +26,10 @@ export type PostInfo = {
  */
 export type UserInfo = {
   user_id: string;
+  username: string;
+
+  /** This is a unique id for the specific app on the other end.  If they refresh, it would be a different one. */
+  screen_id: string;
 };
 
 export type BroadcastMessage = {
@@ -88,7 +93,7 @@ export class BasicGameServer {
    */
   async onPlayerJoined(): Promise<any> {
     await this.subscribePlayer(this.context.postId!);
-    await this.broadcast(this.context.postId!, "Player joined");
+    await this.broadcast(this.context.postId!, { joined: true });
   }
   /**
    * You can use this method to broadcast a message to all of your players.
@@ -159,6 +164,12 @@ export class BasicGameServer {
    */
   context: BaseContext & ContextAPIClients = null as any;
 
+  userInfo: UserInfo = {
+    user_id: "logged_out",
+    username: "Anonymous",
+    screen_id: "",
+  };
+
   /**
    * This must be called to build the game server.  This will add the game server to the Devvit instance.
    *
@@ -205,7 +216,9 @@ export class BasicGameServer {
             ),
           });
           await this.onPostCreated({ post_id: post.id });
-          context.ui.navigateTo(`/r/${sr.name}/comments/${post.id}`);
+          context.ui.navigateTo(
+            `https://www.reddit.com/r/${sr.name}/comments/${post.id}`
+          );
           return context.ui.showToast("Post created, refresh to update.");
         } catch (e) {
           console.error(e);
@@ -222,12 +235,21 @@ export class BasicGameServer {
       that.setSubscriptions = setSubscriptions;
       const postInfo = { post_id: context.postId! };
 
-      const [userInfo] = useState<JSONObject>(async () => {
+      const [ui] = useState<UserInfo>(async () => {
         const user = await context.reddit.getCurrentUser();
-        const ui = user ? { user_id: user.id } : { user_id: "logged_out" };
-        await that.onPlayerJoined();
-        return ui;
+        return user
+          ? {
+              user_id: user.id,
+              username: user.username,
+              screen_id: v4(),
+            }
+          : {
+              user_id: "logged_out",
+              username: "Anonymous",
+              screen_id: v4(),
+            };
       });
+      that.userInfo = ui;
 
       console.log("Subscriptions", JSON.stringify(subscriptions));
       let channels: { [key: string]: UseChannelResult } = {};
