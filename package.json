@@ -1,0 +1,32 @@
+{
+  "name": "devvit-hub",
+  "version": "1.0.0",
+  "description": "Your library description here",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/devvit-hub.git"
+  },
+  "keywords": [
+    "devvit",
+    "hub",
+    "keywords"
+  ],
+  "author": "Your Name",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "yarn build"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "1.6.0"
+  },
+  "dependencies": {
+    "devvit": "^0.11.3-next-2024-11-14-a077c3bb7.0"
+  }
+}

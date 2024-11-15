@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "outDir": "./dist",
+    "declaration": true,
+    "declarationMap": true,
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "target": "ES6",
+    "lib": ["ES6"],
+    "strict": true
+  },
+  "include": ["src"],
+  "extends": "@devvit/public-api/devvit.tsconfig.json"
+}
