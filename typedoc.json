@@ -2,5 +2,6 @@
   "entryPoints": ["src/index.tsx"],
   "out": "docs",
   "tsconfig": "tsconfig.json",
-  "includeVersion": true
+  "includeVersion": true,
+  "excludeInternal": true
 }

@@ -32,6 +32,13 @@ export type UserInfo = {
   screen_id: string;
 };
 
+export type TimerEvent = {
+  post_id: string;
+  name: string;
+  id: string;
+  interval?: number;
+};
+
 export type BroadcastMessage = {
   from: UserInfo;
 
@@ -40,10 +47,6 @@ export type BroadcastMessage = {
 
   /** The raw data of the message. */
   data: any;
-};
-
-export type Timer = {
-  at: (elapsed: number, callback: Function) => Promise<void>;
 };
 
 /**
@@ -120,6 +123,18 @@ export class BasicGameServer {
   }
 
   /**
+   * This gets called whenever a timer event is triggered.  You can use this to update the game state, broadcast
+   * changes, etc.  By default, this method broadcasts the timer event to the post_id channel.
+   */
+  async onTimerEvent(t: TimerEvent) {
+    await this.broadcast(t.post_id, {
+      timer: {
+        timer: t,
+      },
+    });
+  }
+
+  /**
    * This unsubscribes the current player from a channel.
    * @param channel
    */
@@ -129,8 +144,99 @@ export class BasicGameServer {
     this.setSubscriptions(Array.from(subsSet));
   }
 
-  async startTimer(name: string): Promise<Timer> {
-    throw new Error("Not implemented");
+  /**
+   * Cancels a scheduled timer event
+   * @param t The timer event to cancel
+   */
+  async cancel(t: TimerEvent) {
+    await this.context.redis.zRem("timeouts", [JSON.stringify(t)]);
+  }
+
+  /**
+   * Schedules a one-time timer event.  You should prefer this to naive setTimeout, if you want a long-running timer.
+   * This method will handle server restarts and other issues that could cause a naive setTimeout to drift or stop.
+   *
+   * @param name - Unique identifier for the timer, used for cancellation
+   * @param millis - Delay in milliseconds before the timer fires
+   * @returns A TimerEvent object representing the scheduled timer
+   * @throws Error if no post_id is present in the context
+   */
+  async setTimeout(name: string, millis: number): Promise<TimerEvent> {
+    if (!this.context.postId) {
+      throw new Error("No post_id in context");
+    }
+    const event = {
+      post_id: this.context.postId,
+      name,
+      id: v4(),
+    };
+    await this.context.redis.zAdd("timeouts", {
+      score: Date.now() + millis,
+      member: JSON.stringify(event),
+    });
+
+    return event;
+  }
+
+  /**
+   * Schedules a recurring timer event on the server.  You should prefer this to naive setInterval, if you want a long-running
+   * interval.  This method will handle server restarts and other issues that could cause a naive setInterval to drift or stop.
+   *
+   * @param name - Unique identifier for the timer, used for cancellation
+   * @param millis - Interval in milliseconds between timer events
+   * @returns A TimerEvent object representing the scheduled timer
+   * @throws Error if no post_id is present in the context
+   */
+  async setInterval(name: string, millis: number): Promise<TimerEvent> {
+    if (!this.context.postId) {
+      throw new Error("No post_id in context");
+    }
+    const event = {
+      post_id: this.context.postId,
+      name,
+      id: v4(),
+      interval: millis,
+    };
+    await this.context.redis.zAdd("timeouts", {
+      score: Date.now() + millis,
+      member: JSON.stringify(event),
+    });
+
+    return event;
+  }
+
+  /**
+   * @internal
+   *
+   * Internal method to process and fire scheduled timer events
+   * @param context - Base context containing Redis connection and other required data
+   *
+   */
+  async _fireTimers(context: BaseContext) {
+    this.context = context as any;
+    const now = Date.now();
+
+    const expired = await this.context.redis.zRange("timeouts", 0, now, {
+      by: "score",
+    });
+
+    if (expired.length === 0) return;
+
+    await this.context.redis.zRemRangeByScore("timeouts", 0, now);
+
+    for (const entry of expired) {
+      const timer = JSON.parse(entry.member) as TimerEvent;
+
+      if (timer.interval) {
+        await this.context.redis.zAdd("timeouts", {
+          score: now + timer.interval,
+          member: entry.member,
+        });
+      }
+
+      this.context.postId = timer.post_id;
+      await this.onTimerEvent(timer);
+    }
   }
 
   /**
@@ -145,6 +251,30 @@ export class BasicGameServer {
    */
   get reddit(): RedditAPIClient {
     return this.context.reddit;
+  }
+
+  /**
+   * This is a helper method to get the current user id.  This will be null if the user is not logged in, or if
+   * this is a TimerEvent handler.
+   */
+  get userId(): string | null {
+    return this.userInfo.user_id === "logged_out"
+      ? null
+      : this.userInfo.user_id;
+  }
+
+  /**
+   * This is a helper method to get the current post id.
+   */
+  get postId(): string {
+    return this.context?.postId!;
+  }
+
+  /**
+   * This is a helper method to get the current user info.
+   */
+  get userInfo(): UserInfo {
+    return this._userInfo;
   }
 
   /**
@@ -164,7 +294,10 @@ export class BasicGameServer {
    */
   context: BaseContext & ContextAPIClients = null as any;
 
-  userInfo: UserInfo = {
+  /**
+   * @internal
+   */
+  _userInfo: UserInfo = {
     user_id: "logged_out",
     username: "Anonymous",
     screen_id: "",
@@ -181,6 +314,13 @@ export class BasicGameServer {
       redditAPI: true,
       redis: true,
       realtime: true,
+    });
+
+    Devvit.addSchedulerJob({
+      name: "timers",
+      onRun: async (event, context) => {
+        await that._fireTimers(context);
+      },
     });
 
     const postForm = Devvit.createForm(
@@ -215,6 +355,13 @@ export class BasicGameServer {
               />
             ),
           });
+          if ((await context.scheduler.listJobs()).length === 0) {
+            await context.scheduler.runJob({
+              cron: "* * * * *",
+              name: "timers",
+              data: {},
+            });
+          }
           await this.onPostCreated({ post_id: post.id });
           context.ui.navigateTo(
             `https://www.reddit.com/r/${sr.name}/comments/${post.id}`
@@ -237,7 +384,8 @@ export class BasicGameServer {
 
       const [ui] = useState<UserInfo>(async () => {
         const user = await context.reddit.getCurrentUser();
-        return user
+        await that.onPlayerJoined();
+        that._userInfo = user
           ? {
               user_id: user.id,
               username: user.username,
@@ -248,8 +396,10 @@ export class BasicGameServer {
               username: "Anonymous",
               screen_id: v4(),
             };
+        that.onPlayerJoined();
+        return that.userInfo;
       });
-      that.userInfo = ui;
+      that._userInfo = ui;
 
       console.log("Subscriptions", JSON.stringify(subscriptions));
       let channels: { [key: string]: UseChannelResult } = {};
