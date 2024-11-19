@@ -36,6 +36,7 @@ export type TimerEvent = {
   name: string;
   id: string;
   interval?: number;
+  data?: JSONValue;
 };
 
 export type BroadcastMessage = {
@@ -171,10 +172,15 @@ export class BasicGameServer {
    *
    * @param name - Unique identifier for the timer, used for cancellation
    * @param millis - Delay in milliseconds before the timer fires
+   * @param data - Optional data to pass to the timer event
    * @returns A TimerEvent object representing the scheduled timer
    * @throws Error if no postId is present in the context
    */
-  async setTimeout(name: string, millis: number): Promise<TimerEvent> {
+  async setTimeout(
+    name: string,
+    millis: number,
+    data?: JSONValue
+  ): Promise<TimerEvent> {
     if (!this.context.postId) {
       throw new Error("No postId in context");
     }
@@ -182,6 +188,7 @@ export class BasicGameServer {
       postId: this.context.postId,
       name,
       id: v4(),
+      data,
     };
     await this.context.redis.zAdd("timeouts", {
       score: Date.now() + millis,
@@ -197,10 +204,15 @@ export class BasicGameServer {
    *
    * @param name - Unique identifier for the timer, used for cancellation
    * @param millis - Interval in milliseconds between timer events
+   * @param data - Optional data to pass to the timer event
    * @returns A TimerEvent object representing the scheduled timer
    * @throws Error if no postId is present in the context
    */
-  async setInterval(name: string, millis: number): Promise<TimerEvent> {
+  async setInterval(
+    name: string,
+    millis: number,
+    data?: JSONValue
+  ): Promise<TimerEvent> {
     if (!this.context.postId) {
       throw new Error("No postId in context");
     }
@@ -209,6 +221,7 @@ export class BasicGameServer {
       name,
       id: v4(),
       interval: millis,
+      data,
     };
     await this.context.redis.zAdd("timeouts", {
       score: Date.now() + millis,
