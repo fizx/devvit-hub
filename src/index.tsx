@@ -85,7 +85,7 @@ export class BasicGameServer {
    * @param msg The message that was received from the broadcast channel.
    */
   async onReceive(msg: BroadcastMessage): Promise<any> {
-    this.sendToCurentPlayerWebview(msg);
+    this.sendToCurrentPlayerWebview(msg);
   }
 
   /**
@@ -97,7 +97,7 @@ export class BasicGameServer {
   async onPlayerJoined(): Promise<any> {
     await this.subscribePlayer(this.context.postId!);
     await this.broadcast(this.context.postId!, { joined: this.userInfo });
-    await this.sendToCurentPlayerWebview({ ready: this.userInfo });
+    await this.sendToCurrentPlayerWebview({ ready: this.userInfo });
   }
   /**
    * You can use this method to broadcast a message to all of your players.
@@ -119,7 +119,7 @@ export class BasicGameServer {
    * @param msg The message to send to the webview.  This should be a JSONable object.
    * @returns
    */
-  async sendToCurentPlayerWebview(msg: JSONValue): Promise<any> {
+  async sendToCurrentPlayerWebview(msg: JSONValue): Promise<any> {
     if (!this.context.ui.webView) {
       console.error("No webview to send message to");
       return;
