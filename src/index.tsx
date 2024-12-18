@@ -6,6 +6,9 @@ import {
   JSONValue,
   RedditAPIClient,
   RedisClient,
+  SetStateAction,
+  StateSetter,
+  useAsync,
   useChannel,
   UseChannelResult,
   useState,
@@ -133,9 +136,11 @@ export class BasicGameServer {
    * @param channel
    */
   async subscribePlayer(channel: string): Promise<any> {
-    const subsSet = new Set(this.subscriptions);
-    subsSet.add(channel);
-    this.setSubscriptions(Array.from(subsSet));
+    this.setSubscriptions((existing: string[]) => {
+      const subsSet = new Set(existing);
+      subsSet.add(channel);
+      return Array.from(subsSet);
+    });
   }
 
   /**
@@ -329,7 +334,7 @@ export class BasicGameServer {
   /**
    * @internal
    */
-  setSubscriptions: (subs: string[]) => void = () => {
+  setSubscriptions: StateSetter<string[]> = () => {
     throw new Error("setSubscriptions not set");
   };
 
@@ -425,14 +430,22 @@ export class BasicGameServer {
 
     const App: Devvit.CustomPostComponent = (context) => {
       that.context = context;
+      that;
 
       const [subscriptions, setSubscriptions] = useState<string[]>([]);
-      that.subscriptions = subscriptions;
       that.setSubscriptions = setSubscriptions;
+
+      useAsync(async () => 1, {
+        depends: subscriptions,
+        finally: async (data, error) => {
+          console.log("Subscriptions async", subscriptions);
+          that.subscriptions = subscriptions;
+        },
+      });
+
       const postInfo = { postId: context.postId! };
 
       const [ui] = useState<UserInfo>(async () => {
-        console.log("Getting user info");
         const user = await context.reddit.getCurrentUser();
         that._userInfo = user
           ? {
@@ -450,6 +463,7 @@ export class BasicGameServer {
       });
       that._userInfo = ui;
 
+      console.log("user info: ", ui);
       console.log("Subscriptions", JSON.stringify(subscriptions));
       let channels: { [key: string]: UseChannelResult } = {};
       for (const sub of subscriptions) {
